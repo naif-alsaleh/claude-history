@@ -119,15 +119,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "ctrl+p":
 			if m.cursor > 0 {
 				m.cursor--
+				offset := cursorYOffset(&m.viewport, m.cursor)
 				m.viewport.SetContent(m.renderResults())
-				ensureCursorVisible(&m.viewport, m.cursor)
+				m.viewport.SetYOffset(offset)
 			}
 			return m, nil
 		case "down", "ctrl+n":
 			if m.cursor < len(m.results)-1 {
 				m.cursor++
+				offset := cursorYOffset(&m.viewport, m.cursor)
 				m.viewport.SetContent(m.renderResults())
-				ensureCursorVisible(&m.viewport, m.cursor)
+				m.viewport.SetYOffset(offset)
 			}
 			return m, nil
 		}
@@ -178,7 +180,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 const entryHeight = 4 // title + date/url + snippet + blank line
 
-func ensureCursorVisible(vp *viewport.Model, cursor int) {
+func cursorYOffset(vp *viewport.Model, cursor int) int {
 	top := vp.YOffset
 	bottom := top + vp.Height
 
@@ -186,10 +188,11 @@ func ensureCursorVisible(vp *viewport.Model, cursor int) {
 	cursorBottom := cursorTop + entryHeight
 
 	if cursorTop < top {
-		vp.SetYOffset(cursorTop)
+		return cursorTop
 	} else if cursorBottom > bottom {
-		vp.SetYOffset(cursorBottom - vp.Height)
+		return cursorBottom - vp.Height
 	}
+	return top
 }
 
 func (m model) doSearch(query string) tea.Cmd {
