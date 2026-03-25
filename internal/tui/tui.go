@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/naif/claude-history/internal/data"
@@ -61,16 +60,19 @@ var (
 			Foreground(lipgloss.Color("241"))
 )
 
+const headerLines = 3 // header + input + help
+const linesPerEntry = 4 // title + date/url + snippet + blank
+
 type model struct {
-	input     textinput.Model
-	viewport  viewport.Model
-	searcher  search.Searcher
-	results   []data.SearchResult
-	cursor    int
-	width     int
-	height    int
-	searching bool
-	lastQuery string
+	input      textinput.Model
+	searcher   search.Searcher
+	results    []data.SearchResult
+	cursor     int
+	offset     int // first visible result index
+	width      int
+	height     int
+	searching  bool
+	lastQuery  string
 }
 
 type searchDoneMsg struct {
@@ -84,11 +86,8 @@ func Run(searcher search.Searcher) error {
 	ti.Focus()
 	ti.Width = 60
 
-	vp := viewport.New(80, 20)
-
 	m := model{
 		input:    ti,
-		viewport: vp,
 		searcher: searcher,
 		width:    80,
 		height:   24,
@@ -97,6 +96,27 @@ func Run(searcher search.Searcher) error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
+}
+
+func (m model) visibleCount() int {
+	available := m.height - headerLines
+	count := available / linesPerEntry
+	if count < 1 {
+		count = 1
+	}
+	return count
+}
+
+func (m *model) clampOffset() {
+	visible := m.visibleCount()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	} else if m.cursor >= m.offset+visible {
+		m.offset = m.cursor - visible + 1
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
 }
 
 func (m model) Init() tea.Cmd {
@@ -119,17 +139,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "ctrl+p":
 			if m.cursor > 0 {
 				m.cursor--
-				offset := cursorYOffset(&m.viewport, m.cursor)
-				m.viewport.SetContent(m.renderResults())
-				m.viewport.SetYOffset(offset)
+				m.clampOffset()
 			}
 			return m, nil
 		case "down", "ctrl+n":
 			if m.cursor < len(m.results)-1 {
 				m.cursor++
-				offset := cursorYOffset(&m.viewport, m.cursor)
-				m.viewport.SetContent(m.renderResults())
-				m.viewport.SetYOffset(offset)
+				m.clampOffset()
 			}
 			return m, nil
 		}
@@ -137,24 +153,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		headerH := 4
-		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - headerH
 		m.input.Width = msg.Width - 4
-		if len(m.results) > 0 {
-			m.viewport.SetContent(m.renderResults())
-		}
+		m.clampOffset()
 
 	case searchDoneMsg:
 		m.searching = false
 		if msg.err != nil {
-			m.viewport.SetContent(fmt.Sprintf("Error: %v", msg.err))
+			m.results = nil
 		} else {
 			m.results = msg.results
-			m.cursor = 0
-			m.viewport.SetContent(m.renderResults())
-			m.viewport.GotoTop()
 		}
+		m.cursor = 0
+		m.offset = 0
 		return m, nil
 	}
 
@@ -170,29 +180,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searching = true
 			cmds = append(cmds, m.doSearch(query))
 		} else if len(query) < 2 {
+			m.lastQuery = query
 			m.results = nil
-			m.viewport.SetContent("")
+			m.cursor = 0
+			m.offset = 0
 		}
 	}
 
 	return m, tea.Batch(cmds...)
-}
-
-const entryHeight = 4 // title + date/url + snippet + blank line
-
-func cursorYOffset(vp *viewport.Model, cursor int) int {
-	top := vp.YOffset
-	bottom := top + vp.Height
-
-	cursorTop := cursor * entryHeight
-	cursorBottom := cursorTop + entryHeight
-
-	if cursorTop < top {
-		return cursorTop
-	} else if cursorBottom > bottom {
-		return cursorBottom - vp.Height
-	}
-	return top
 }
 
 func (m model) doSearch(query string) tea.Cmd {
@@ -214,23 +209,31 @@ func (m model) View() string {
 
 	help := helpStyle.Render("↑/↓/ctrl+p/n navigate • enter open • esc quit" + status)
 
-	return fmt.Sprintf("%s\n%s\n%s\n%s",
-		header,
-		m.input.View(),
-		help,
-		m.viewport.View(),
-	)
+	var body string
+	if len(m.results) == 0 && m.lastQuery != "" && !m.searching {
+		body = "No results found."
+	} else {
+		body = m.renderVisibleResults()
+	}
+
+	return fmt.Sprintf("%s\n%s\n%s\n%s", header, m.input.View(), help, body)
 }
 
-func (m model) renderResults() string {
+func (m model) renderVisibleResults() string {
 	if len(m.results) == 0 {
-		return "No results found."
+		return ""
+	}
+
+	visible := m.visibleCount()
+	end := m.offset + visible
+	if end > len(m.results) {
+		end = len(m.results)
 	}
 
 	var b strings.Builder
-	for i, r := range m.results {
+	for i := m.offset; i < end; i++ {
 		selected := i == m.cursor
-		b.WriteString(m.renderEntry(i, r, selected))
+		b.WriteString(m.renderEntry(i, m.results[i], selected))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -321,7 +324,6 @@ func mergeSpans(spans []span, textLen int) []span {
 		return nil
 	}
 
-	// sort by start
 	for i := 1; i < len(spans); i++ {
 		for j := i; j > 0 && spans[j].start < spans[j-1].start; j-- {
 			spans[j], spans[j-1] = spans[j-1], spans[j]
@@ -340,7 +342,6 @@ func mergeSpans(spans []span, textLen int) []span {
 		}
 	}
 
-	// clamp
 	for i := range merged {
 		if merged[i].end > textLen {
 			merged[i].end = textLen
