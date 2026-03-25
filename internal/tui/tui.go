@@ -120,7 +120,7 @@ func (m *model) clampOffset() {
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return tea.Batch(textinput.Blink, m.doSearch(""))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -151,10 +151,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+a":
 			ro := !m.searcher.ResearchOnly()
 			m.searcher.SetResearchOnly(ro)
-			if len(m.input.Value()) >= 2 {
-				m.searching = true
-				return m, m.doSearch(m.input.Value())
-			}
+			m.searching = true
+			return m, m.doSearch(m.input.Value())
 			return m, nil
 		}
 
@@ -183,15 +181,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.input.Value() != prevVal {
 		query := m.input.Value()
-		if query != m.lastQuery && len(query) >= 2 {
+		if query != m.lastQuery {
 			m.lastQuery = query
 			m.searching = true
 			cmds = append(cmds, m.doSearch(query))
-		} else if len(query) < 2 {
-			m.lastQuery = query
-			m.results = nil
-			m.cursor = 0
-			m.offset = 0
 		}
 	}
 
@@ -200,7 +193,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) doSearch(query string) tea.Cmd {
 	return func() tea.Msg {
-		results, err := m.searcher.Search(context.Background(), query, 50)
+		results, err := m.searcher.Search(context.Background(), query, 0)
 		return searchDoneMsg{results: results, err: err}
 	}
 }
@@ -222,7 +215,7 @@ func (m model) View() string {
 	help := helpStyle.Render("↑/↓/ctrl+p/n navigate • enter open • ctrl+a filter [" + filter + "] • esc quit" + status)
 
 	var body string
-	if len(m.results) == 0 && m.lastQuery != "" && !m.searching {
+	if len(m.results) == 0 && !m.searching {
 		body = "No results found."
 	} else {
 		body = m.renderVisibleResults()

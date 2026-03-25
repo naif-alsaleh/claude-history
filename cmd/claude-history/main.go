@@ -82,8 +82,8 @@ func searchCmd(dbPath *string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "search [query]",
-		Short: "Search conversations (one-shot CLI mode)",
-		Args:  cobra.MinimumNArgs(1),
+		Short: "Search conversations (one-shot CLI mode). No query lists all by date.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := data.NewStore(*dbPath)
 			if err != nil {
@@ -98,7 +98,10 @@ func searchCmd(dbPath *string) *cobra.Command {
 				return err
 			}
 
-			query := args[0]
+			query := ""
+			if len(args) > 0 {
+				query = args[0]
+			}
 			return cli.RunSearch(ctx, searcher, query, maxResults)
 		},
 	}

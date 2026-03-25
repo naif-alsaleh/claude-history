@@ -34,27 +34,37 @@ func (f *FuzzySearcher) ResearchOnly() bool      { return f.researchOnly }
 func (f *FuzzySearcher) Search(_ context.Context, query string, maxResults int) ([]data.SearchResult, error) {
 	query = strings.ToLower(query)
 	tokens := strings.Fields(query)
-	if len(tokens) == 0 {
-		return nil, nil
-	}
 
 	var results []data.SearchResult
 
-	for _, cw := range f.convs {
-		if f.researchOnly && !cw.Conversation.IsResearch {
-			continue
+	if len(tokens) == 0 {
+		for _, cw := range f.convs {
+			if f.researchOnly && !cw.Conversation.IsResearch {
+				continue
+			}
+			results = append(results, data.SearchResult{
+				Conversation: cw.Conversation,
+			})
 		}
-		best := scoreBest(cw, tokens)
-		if best.Score > 0 {
-			results = append(results, best)
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Conversation.UpdatedAt.After(results[j].Conversation.UpdatedAt)
+		})
+	} else {
+		for _, cw := range f.convs {
+			if f.researchOnly && !cw.Conversation.IsResearch {
+				continue
+			}
+			best := scoreBest(cw, tokens)
+			if best.Score > 0 {
+				results = append(results, best)
+			}
 		}
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Score > results[j].Score
+		})
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-
-	if len(results) > maxResults {
+	if maxResults > 0 && len(results) > maxResults {
 		results = results[:maxResults]
 	}
 	return results, nil
