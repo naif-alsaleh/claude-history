@@ -120,12 +120,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor > 0 {
 				m.cursor--
 				m.viewport.SetContent(m.renderResults())
+				ensureCursorVisible(&m.viewport, m.cursor)
 			}
 			return m, nil
 		case "down", "ctrl+n":
 			if m.cursor < len(m.results)-1 {
 				m.cursor++
 				m.viewport.SetContent(m.renderResults())
+				ensureCursorVisible(&m.viewport, m.cursor)
 			}
 			return m, nil
 		}
@@ -172,6 +174,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+const entryHeight = 4 // title + date/url + snippet + blank line
+
+func ensureCursorVisible(vp *viewport.Model, cursor int) {
+	top := vp.YOffset
+	bottom := top + vp.Height
+
+	cursorTop := cursor * entryHeight
+	cursorBottom := cursorTop + entryHeight
+
+	if cursorTop < top {
+		vp.SetYOffset(cursorTop)
+	} else if cursorBottom > bottom {
+		vp.SetYOffset(cursorBottom - vp.Height)
+	}
 }
 
 func (m model) doSearch(query string) tea.Cmd {
