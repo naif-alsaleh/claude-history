@@ -10,8 +10,9 @@ import (
 )
 
 type FuzzySearcher struct {
-	store *data.Store
-	convs []data.ConversationWithMessages
+	store        *data.Store
+	convs        []data.ConversationWithMessages
+	researchOnly bool
 }
 
 func NewFuzzySearcher(store *data.Store) *FuzzySearcher {
@@ -27,6 +28,9 @@ func (f *FuzzySearcher) Index(ctx context.Context) error {
 	return nil
 }
 
+func (f *FuzzySearcher) SetResearchOnly(v bool) { f.researchOnly = v }
+func (f *FuzzySearcher) ResearchOnly() bool      { return f.researchOnly }
+
 func (f *FuzzySearcher) Search(_ context.Context, query string, maxResults int) ([]data.SearchResult, error) {
 	query = strings.ToLower(query)
 	tokens := strings.Fields(query)
@@ -37,6 +41,9 @@ func (f *FuzzySearcher) Search(_ context.Context, query string, maxResults int) 
 	var results []data.SearchResult
 
 	for _, cw := range f.convs {
+		if f.researchOnly && !cw.Conversation.IsResearch {
+			continue
+		}
 		best := scoreBest(cw, tokens)
 		if best.Score > 0 {
 			results = append(results, best)

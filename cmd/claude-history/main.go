@@ -75,7 +75,10 @@ func importCmd(dbPath *string) *cobra.Command {
 }
 
 func searchCmd(dbPath *string) *cobra.Command {
-	var maxResults int
+	var (
+		maxResults   int
+		researchOnly bool
+	)
 
 	cmd := &cobra.Command{
 		Use:   "search [query]",
@@ -90,6 +93,7 @@ func searchCmd(dbPath *string) *cobra.Command {
 
 			ctx := context.Background()
 			searcher := search.NewFuzzySearcher(store)
+			searcher.SetResearchOnly(researchOnly)
 			if err := searcher.Index(ctx); err != nil {
 				return err
 			}
@@ -100,6 +104,7 @@ func searchCmd(dbPath *string) *cobra.Command {
 	}
 
 	cmd.Flags().IntVarP(&maxResults, "max", "n", 10, "maximum number of results")
+	cmd.Flags().BoolVarP(&researchOnly, "research", "r", false, "only search research conversations")
 	return cmd
 }
 

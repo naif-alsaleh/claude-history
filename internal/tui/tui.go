@@ -148,6 +148,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clampOffset()
 			}
 			return m, nil
+		case "ctrl+a":
+			ro := !m.searcher.ResearchOnly()
+			m.searcher.SetResearchOnly(ro)
+			if len(m.input.Value()) >= 2 {
+				m.searching = true
+				return m, m.doSearch(m.input.Value())
+			}
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:
@@ -207,7 +215,11 @@ func (m model) View() string {
 		status = fmt.Sprintf(" %d results", len(m.results))
 	}
 
-	help := helpStyle.Render("↑/↓/ctrl+p/n navigate • enter open • esc quit" + status)
+	filter := "all"
+	if m.searcher.ResearchOnly() {
+		filter = "research only"
+	}
+	help := helpStyle.Render("↑/↓/ctrl+p/n navigate • enter open • ctrl+a filter [" + filter + "] • esc quit" + status)
 
 	var body string
 	if len(m.results) == 0 && m.lastQuery != "" && !m.searching {
