@@ -53,69 +53,111 @@ func (f *FuzzySearcher) Search(_ context.Context, query string, maxResults int) 
 	return results, nil
 }
 
+type match struct {
+	score   float64
+	snippet string
+	source  string // "title", "summary", "message"
+}
+
 func scoreBest(cw data.ConversationWithMessages, tokens []string) data.SearchResult {
-	var bestScore float64
-	var bestSnippet string
+	var best match
 
-	// Score title match (weighted higher)
 	titleLower := strings.ToLower(cw.Conversation.Name)
-	titleScore := scoreText(titleLower, tokens) * 2.0
-	if titleScore > bestScore {
-		bestScore = titleScore
-		bestSnippet = cw.Conversation.Name
-	}
-
-	// Score summary
-	summaryLower := strings.ToLower(cw.Conversation.Summary)
-	summaryScore := scoreText(summaryLower, tokens) * 1.5
-	if summaryScore > bestScore {
-		bestScore = summaryScore
-		bestSnippet = extractSnippet(cw.Conversation.Summary, tokens, 150)
-	}
-
-	// Score messages
-	for _, m := range cw.Messages {
-		textLower := strings.ToLower(m.Text)
-		msgScore := scoreText(textLower, tokens)
-		if msgScore > bestScore {
-			bestScore = msgScore
-			bestSnippet = extractSnippet(m.Text, tokens, 150)
+	if s := scoreText(titleLower, tokens); s > 0 {
+		m := match{score: s * 3.0, snippet: cw.Conversation.Name, source: "title"}
+		if m.score > best.score {
+			best = m
 		}
 	}
 
-	// Research bonus
+	summaryLower := strings.ToLower(cw.Conversation.Summary)
+	if s := scoreText(summaryLower, tokens); s > 0 {
+		m := match{score: s * 1.5, snippet: extractSnippet(cw.Conversation.Summary, tokens, 150), source: "summary"}
+		if m.score > best.score {
+			best = m
+		}
+	}
+
+	for _, msg := range cw.Messages {
+		textLower := strings.ToLower(msg.Text)
+		if s := scoreText(textLower, tokens); s > 0 {
+			m := match{score: s, snippet: extractSnippet(msg.Text, tokens, 150), source: "message"}
+			if m.score > best.score {
+				best = m
+			}
+		}
+	}
+
+	if best.score == 0 {
+		return data.SearchResult{}
+	}
+
 	if cw.Conversation.IsResearch {
-		bestScore *= 1.1
+		best.score *= 1.1
+	}
+
+	// When the best match is the title, try to find a content snippet to show instead.
+	if best.source == "title" {
+		if snippet := findContentSnippet(cw, tokens); snippet != "" {
+			best.snippet = snippet
+		}
 	}
 
 	return data.SearchResult{
 		Conversation:  cw.Conversation,
-		Snippet:       bestSnippet,
+		Snippet:       best.snippet,
 		MatchedTokens: tokens,
-		Score:         bestScore,
+		Score:         best.score,
 	}
 }
 
+func findContentSnippet(cw data.ConversationWithMessages, tokens []string) string {
+	// Prefer summary
+	if hasSubstringMatch(strings.ToLower(cw.Conversation.Summary), tokens) {
+		return extractSnippet(cw.Conversation.Summary, tokens, 150)
+	}
+	for _, msg := range cw.Messages {
+		if hasSubstringMatch(strings.ToLower(msg.Text), tokens) {
+			return extractSnippet(msg.Text, tokens, 150)
+		}
+	}
+	return ""
+}
+
+func hasSubstringMatch(text string, tokens []string) bool {
+	for _, tok := range tokens {
+		if strings.Contains(text, tok) {
+			return true
+		}
+	}
+	return false
+}
+
+// scoreText returns a score for how well text matches the tokens.
+// Exact substring matches score much higher than fuzzy character-sequence matches.
 func scoreText(text string, tokens []string) float64 {
 	if text == "" {
 		return 0
 	}
-	var matched int
+	var total float64
 	for _, tok := range tokens {
 		if strings.Contains(text, tok) {
-			matched++
+			total += 1.0
 		} else if fuzzyMatch(text, tok) {
-			matched++
+			total += 0.2
 		}
 	}
-	if matched == 0 {
+	if total == 0 {
 		return 0
 	}
-	return float64(matched) / float64(len(tokens))
+	return total / float64(len(tokens))
 }
 
 // fuzzyMatch checks if all characters of pattern appear in text in order.
 func fuzzyMatch(text, pattern string) bool {
+	if len(pattern) < 3 {
+		return false
+	}
 	ti := 0
 	for pi := 0; pi < len(pattern); {
 		if ti >= len(text) {
