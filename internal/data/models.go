@@ -20,7 +20,8 @@ type Message struct {
 }
 
 type SearchResult struct {
-	Conversation Conversation
-	Snippet      string
-	Score        float64
+	Conversation  Conversation
+	Snippet       string
+	MatchedTokens []string
+	Score         float64
 }

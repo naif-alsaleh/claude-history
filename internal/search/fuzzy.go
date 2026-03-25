@@ -89,9 +89,10 @@ func scoreBest(cw data.ConversationWithMessages, tokens []string) data.SearchRes
 	}
 
 	return data.SearchResult{
-		Conversation: cw.Conversation,
-		Snippet:      bestSnippet,
-		Score:        bestScore,
+		Conversation:  cw.Conversation,
+		Snippet:       bestSnippet,
+		MatchedTokens: tokens,
+		Score:         bestScore,
 	}
 }
 

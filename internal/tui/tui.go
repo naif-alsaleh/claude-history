@@ -21,6 +21,11 @@ var (
 			Bold(true).
 			Foreground(lipgloss.Color("39"))
 
+	selectedTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("39")).
+				Background(lipgloss.Color("236"))
+
 	researchStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("214")).
@@ -35,15 +40,15 @@ var (
 			Underline(true)
 
 	snippetStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252"))
+			Foreground(lipgloss.Color("245"))
 
-	selectedStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(0, 1)
+	matchStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("211"))
 
-	normalStyle = lipgloss.NewStyle().
-			Padding(0, 1)
+	cursorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")).
+			Bold(true)
 
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
@@ -57,15 +62,15 @@ var (
 )
 
 type model struct {
-	input      textinput.Model
-	viewport   viewport.Model
-	searcher   search.Searcher
-	results    []data.SearchResult
-	cursor     int
-	width      int
-	height     int
-	searching  bool
-	lastQuery  string
+	input     textinput.Model
+	viewport  viewport.Model
+	searcher  search.Searcher
+	results   []data.SearchResult
+	cursor    int
+	width     int
+	height    int
+	searching bool
+	lastQuery string
 }
 
 type searchDoneMsg struct {
@@ -111,13 +116,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				openURL(fmt.Sprintf("https://claude.ai/chat/%s", m.results[m.cursor].Conversation.UUID))
 			}
 			return m, nil
-		case "up", "ctrl+k":
+		case "up", "ctrl+p":
 			if m.cursor > 0 {
 				m.cursor--
 				m.viewport.SetContent(m.renderResults())
 			}
 			return m, nil
-		case "down", "ctrl+j":
+		case "down", "ctrl+n":
 			if m.cursor < len(m.results)-1 {
 				m.cursor++
 				m.viewport.SetContent(m.renderResults())
@@ -128,7 +133,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		headerH := 4 // header + input + help
+		headerH := 4
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - headerH
 		m.input.Width = msg.Width - 4
@@ -186,7 +191,7 @@ func (m model) View() string {
 		status = fmt.Sprintf(" %d results", len(m.results))
 	}
 
-	help := helpStyle.Render("↑/↓ navigate • enter open in browser • esc quit" + status)
+	help := helpStyle.Render("↑/↓/ctrl+p/n navigate • enter open • esc quit" + status)
 
 	return fmt.Sprintf("%s\n%s\n%s\n%s",
 		header,
@@ -203,48 +208,128 @@ func (m model) renderResults() string {
 
 	var b strings.Builder
 	for i, r := range m.results {
-		entry := m.renderEntry(i, r)
-		if i == m.cursor {
-			b.WriteString(selectedStyle.Render(entry))
-		} else {
-			b.WriteString(normalStyle.Render(entry))
-		}
+		selected := i == m.cursor
+		b.WriteString(m.renderEntry(i, r, selected))
 		b.WriteString("\n")
 	}
 	return b.String()
 }
 
-func (m model) renderEntry(idx int, r data.SearchResult) string {
+func (m model) renderEntry(idx int, r data.SearchResult, selected bool) string {
 	var b strings.Builder
 
-	title := titleStyle.Render(fmt.Sprintf("%d. %s", idx+1, r.Conversation.Name))
+	indicator := "  "
+	ts := titleStyle
+	if selected {
+		indicator = cursorStyle.Render("▸ ")
+		ts = selectedTitleStyle
+	}
+
+	title := ts.Render(fmt.Sprintf("%d. %s", idx+1, r.Conversation.Name))
 	if r.Conversation.IsResearch {
 		title += " " + researchStyle.Render("Research")
 	}
-	b.WriteString(title)
-	b.WriteString("\n")
+	b.WriteString(indicator + title + "\n")
 
 	date := dateStyle.Render(r.Conversation.CreatedAt.Format(time.DateOnly))
 	url := urlStyle.Render(fmt.Sprintf("https://claude.ai/chat/%s", r.Conversation.UUID))
-	b.WriteString(fmt.Sprintf("%s  %s", date, url))
-	b.WriteString("\n")
+	b.WriteString("  " + date + "  " + url + "\n")
 
 	if r.Snippet != "" {
-		snippet := snippetStyle.Render(truncate(r.Snippet, m.width-6))
-		b.WriteString(snippet)
+		highlighted := highlightMatches(r.Snippet, r.MatchedTokens, m.width-4)
+		b.WriteString("  " + highlighted)
 	}
 
 	return b.String()
 }
 
-func truncate(s string, maxLen int) string {
+func highlightMatches(snippet string, tokens []string, maxLen int) string {
 	if maxLen <= 0 {
 		maxLen = 80
 	}
-	if len(s) <= maxLen {
-		return s
+	clean := strings.Join(strings.Fields(snippet), " ")
+	if len(clean) > maxLen {
+		clean = clean[:maxLen-3] + "..."
 	}
-	return s[:maxLen-3] + "..."
+
+	if len(tokens) == 0 {
+		return snippetStyle.Render(clean)
+	}
+
+	lower := strings.ToLower(clean)
+	var spans []span
+
+	for _, tok := range tokens {
+		tokLower := strings.ToLower(tok)
+		idx := 0
+		for {
+			pos := strings.Index(lower[idx:], tokLower)
+			if pos < 0 {
+				break
+			}
+			abs := idx + pos
+			spans = append(spans, span{abs, abs + len(tokLower)})
+			idx = abs + len(tokLower)
+		}
+	}
+
+	if len(spans) == 0 {
+		return snippetStyle.Render(clean)
+	}
+
+	merged := mergeSpans(spans, len(clean))
+
+	var result strings.Builder
+	prev := 0
+	for _, s := range merged {
+		if s.start > prev {
+			result.WriteString(snippetStyle.Render(clean[prev:s.start]))
+		}
+		result.WriteString(matchStyle.Render(clean[s.start:s.end]))
+		prev = s.end
+	}
+	if prev < len(clean) {
+		result.WriteString(snippetStyle.Render(clean[prev:]))
+	}
+
+	return result.String()
+}
+
+func mergeSpans(spans []span, textLen int) []span {
+	if len(spans) == 0 {
+		return nil
+	}
+
+	// sort by start
+	for i := 1; i < len(spans); i++ {
+		for j := i; j > 0 && spans[j].start < spans[j-1].start; j-- {
+			spans[j], spans[j-1] = spans[j-1], spans[j]
+		}
+	}
+
+	merged := []span{spans[0]}
+	for _, s := range spans[1:] {
+		last := &merged[len(merged)-1]
+		if s.start <= last.end {
+			if s.end > last.end {
+				last.end = s.end
+			}
+		} else {
+			merged = append(merged, s)
+		}
+	}
+
+	// clamp
+	for i := range merged {
+		if merged[i].end > textLen {
+			merged[i].end = textLen
+		}
+	}
+	return merged
+}
+
+type span struct {
+	start, end int
 }
 
 func openURL(url string) {
