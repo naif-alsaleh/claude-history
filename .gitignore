@@ -1,0 +1,4 @@
+/claude-history
+*.duckdb
+*.duckdb.wal
+/data/
