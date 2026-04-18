@@ -17,7 +17,7 @@ type Client struct {
 
 func NewClient(sessionKey string) *Client {
 	return &Client{
-		http:       &http.Client{Timeout: 30 * time.Second},
+		http:       &http.Client{Timeout: 2 * time.Minute},
 		sessionKey: sessionKey,
 		baseURL:    "https://claude.ai",
 	}
@@ -88,36 +88,12 @@ func (c *Client) GetOrganizationID(ctx context.Context) (string, error) {
 }
 
 func (c *Client) ListConversations(ctx context.Context, orgID string) ([]APIConversationListItem, error) {
-	var all []APIConversationListItem
-	cursor := ""
-
-	for {
-		path := fmt.Sprintf("/api/organizations/%s/chat_conversations", orgID)
-		if cursor != "" {
-			path += "?cursor=" + cursor
-		}
-
-		var page []APIConversationListItem
-		if err := c.doRequest(ctx, path, &page); err != nil {
-			return all, fmt.Errorf("listing conversations: %w", err)
-		}
-
-		if len(page) == 0 {
-			break
-		}
-
-		all = append(all, page...)
-
-		// If the API returns fewer than a typical page, we've reached the end.
-		// The claude.ai API currently returns all conversations in one response,
-		// but we handle pagination defensively.
-		if len(page) < 100 {
-			break
-		}
-		cursor = page[len(page)-1].UUID
+	path := fmt.Sprintf("/api/organizations/%s/chat_conversations", orgID)
+	var convs []APIConversationListItem
+	if err := c.doRequest(ctx, path, &convs); err != nil {
+		return nil, fmt.Errorf("listing conversations: %w", err)
 	}
-
-	return all, nil
+	return convs, nil
 }
 
 func (c *Client) GetConversation(ctx context.Context, orgID, convID string) (rawConversation, error) {

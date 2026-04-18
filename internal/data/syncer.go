@@ -35,7 +35,25 @@ func Sync(ctx context.Context, store *Store, client *Client, opts SyncOptions, l
 	stats := SyncStats{Listed: len(convList)}
 	logf("Found %d conversations", len(convList))
 
-	for i, item := range convList {
+	toFetch := 0
+	for _, item := range convList {
+		dbUpdatedAt, exists, err := store.GetConversationUpdatedAt(ctx, item.UUID)
+		if err != nil {
+			return stats, fmt.Errorf("checking conversation %s: %w", item.UUID, err)
+		}
+		if !exists || (opts.UpdateExisting && !dbUpdatedAt.Equal(item.UpdatedAt)) {
+			toFetch++
+		}
+	}
+	logf("Need to fetch %d conversations (%d already in DB)", toFetch, len(convList)-toFetch)
+
+	if toFetch == 0 {
+		stats.Skipped = len(convList)
+		return stats, nil
+	}
+
+	fetched := 0
+	for _, item := range convList {
 		if err := ctx.Err(); err != nil {
 			return stats, err
 		}
@@ -46,17 +64,16 @@ func Sync(ctx context.Context, store *Store, client *Client, opts SyncOptions, l
 		}
 
 		if exists {
-			if !opts.UpdateExisting {
-				stats.Skipped++
-				continue
-			}
-			if dbUpdatedAt.Equal(item.UpdatedAt) {
+			if !opts.UpdateExisting || dbUpdatedAt.Equal(item.UpdatedAt) {
 				stats.Skipped++
 				continue
 			}
 		}
 
+		fetched++
 		time.Sleep(500 * time.Millisecond)
+
+		logf("  [%d/%d] Fetching: %s", fetched, toFetch, item.Name)
 
 		full, err := client.GetConversation(ctx, orgID, item.UUID)
 		if err != nil {
@@ -70,17 +87,17 @@ func Sync(ctx context.Context, store *Store, client *Client, opts SyncOptions, l
 					time.Sleep(5 * time.Second)
 					full, err = client.GetConversation(ctx, orgID, item.UUID)
 					if err != nil {
-						logf("  [%d/%d] SKIP %s: %v", i+1, stats.Listed, item.Name, err)
+						logf("  [%d/%d] FAILED: %s (%v)", fetched, toFetch, item.Name, err)
 						stats.Errors++
 						continue
 					}
 				} else {
-					logf("  [%d/%d] SKIP %s: %v", i+1, stats.Listed, item.Name, err)
+					logf("  [%d/%d] FAILED: %s (%v)", fetched, toFetch, item.Name, err)
 					stats.Errors++
 					continue
 				}
 			} else {
-				logf("  [%d/%d] SKIP %s: %v", i+1, stats.Listed, item.Name, err)
+				logf("  [%d/%d] FAILED: %s (%v)", fetched, toFetch, item.Name, err)
 				stats.Errors++
 				continue
 			}
@@ -120,10 +137,8 @@ func Sync(ctx context.Context, store *Store, client *Client, opts SyncOptions, l
 
 		if exists {
 			stats.Updated++
-			logf("  [%d/%d] Updated: %s", i+1, stats.Listed, item.Name)
 		} else {
 			stats.New++
-			logf("  [%d/%d] New: %s", i+1, stats.Listed, item.Name)
 		}
 	}
 
