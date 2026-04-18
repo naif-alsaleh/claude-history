@@ -82,6 +82,23 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) error {
 	return err
 }
 
+func (s *Store) GetConversationUpdatedAt(ctx context.Context, uuid string) (time.Time, bool, error) {
+	var updatedAt time.Time
+	err := s.db.QueryRowContext(ctx, "SELECT updated_at FROM conversations WHERE uuid = ?", uuid).Scan(&updatedAt)
+	if err == sql.ErrNoRows {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return updatedAt, true, nil
+}
+
+func (s *Store) DeleteMessages(ctx context.Context, conversationID string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM messages WHERE conversation_id = ?", conversationID)
+	return err
+}
+
 func (s *Store) ConversationCount(ctx context.Context) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM conversations").Scan(&count)

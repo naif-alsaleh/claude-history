@@ -36,6 +36,7 @@ func rootCmd() *cobra.Command {
 
 	root.AddCommand(
 		importCmd(&dbPath),
+		syncCmd(&dbPath),
 		searchCmd(&dbPath),
 		tuiCmd(&dbPath),
 	)
@@ -72,6 +73,55 @@ func importCmd(dbPath *string) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func syncCmd(dbPath *string) *cobra.Command {
+	var (
+		sessionKey     string
+		updateExisting bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Sync conversations from claude.ai",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if sessionKey == "" {
+				sessionKey = os.Getenv("CLAUDE_SESSION_KEY")
+			}
+			if sessionKey == "" {
+				return fmt.Errorf("session key required: use --session-key flag or CLAUDE_SESSION_KEY env var\n\nTo get your session key:\n1. Open claude.ai in your browser\n2. Open DevTools (F12) → Application → Cookies\n3. Copy the value of the 'sessionKey' cookie")
+			}
+
+			if err := ensureDBDir(*dbPath); err != nil {
+				return err
+			}
+			store, err := data.NewStore(*dbPath)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+
+			client := data.NewClient(sessionKey)
+			ctx := context.Background()
+
+			stats, err := data.Sync(ctx, store, client, data.SyncOptions{
+				UpdateExisting: updateExisting,
+			}, func(format string, args ...any) {
+				fmt.Printf(format+"\n", args...)
+			})
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("\nSync complete: %d listed, %d new, %d updated, %d skipped, %d errors\n",
+				stats.Listed, stats.New, stats.Updated, stats.Skipped, stats.Errors)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&sessionKey, "session-key", "", "claude.ai session key (or set CLAUDE_SESSION_KEY)")
+	cmd.Flags().BoolVar(&updateExisting, "update", false, "re-fetch conversations that have been updated")
+	return cmd
 }
 
 func searchCmd(dbPath *string) *cobra.Command {
