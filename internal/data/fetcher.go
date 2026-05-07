@@ -104,3 +104,4 @@ func (c *Client) GetConversation(ctx context.Context, orgID, convID string) (raw
 	}
 	return conv, nil
 }
+

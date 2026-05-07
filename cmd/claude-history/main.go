@@ -79,6 +79,7 @@ func syncCmd(dbPath *string) *cobra.Command {
 	var (
 		sessionKey     string
 		updateExisting bool
+		forceAll       bool
 	)
 
 	cmd := &cobra.Command{
@@ -106,6 +107,7 @@ func syncCmd(dbPath *string) *cobra.Command {
 
 			stats, err := data.Sync(ctx, store, client, data.SyncOptions{
 				UpdateExisting: updateExisting,
+				ForceAll:       forceAll,
 			}, func(format string, args ...any) {
 				fmt.Printf(format+"\n", args...)
 			})
@@ -121,6 +123,7 @@ func syncCmd(dbPath *string) *cobra.Command {
 
 	cmd.Flags().StringVar(&sessionKey, "session-key", "", "claude.ai session key (or set CLAUDE_SESSION_KEY)")
 	cmd.Flags().BoolVar(&updateExisting, "update", false, "re-fetch conversations that have been updated")
+	cmd.Flags().BoolVar(&forceAll, "force", false, "re-fetch all conversations")
 	return cmd
 }
 

@@ -9,6 +9,7 @@ import (
 
 type SyncOptions struct {
 	UpdateExisting bool
+	ForceAll       bool
 }
 
 type SyncStats struct {
@@ -37,6 +38,10 @@ func Sync(ctx context.Context, store *Store, client *Client, opts SyncOptions, l
 
 	toFetch := 0
 	for _, item := range convList {
+		if opts.ForceAll {
+			toFetch++
+			continue
+		}
 		dbUpdatedAt, exists, err := store.GetConversationUpdatedAt(ctx, item.UUID)
 		if err != nil {
 			return stats, fmt.Errorf("checking conversation %s: %w", item.UUID, err)
@@ -63,7 +68,7 @@ func Sync(ctx context.Context, store *Store, client *Client, opts SyncOptions, l
 			return stats, fmt.Errorf("checking conversation %s: %w", item.UUID, err)
 		}
 
-		if exists {
+		if exists && !opts.ForceAll {
 			if !opts.UpdateExisting || dbUpdatedAt.Equal(item.UpdatedAt) {
 				stats.Skipped++
 				continue
@@ -109,7 +114,7 @@ func Sync(ctx context.Context, store *Store, client *Client, opts SyncOptions, l
 			Summary:    full.Summary,
 			CreatedAt:  full.CreatedAt,
 			UpdatedAt:  full.UpdatedAt,
-			IsResearch: isResearch(full.ChatMessages),
+			IsResearch: isResearch(full),
 		}
 
 		if exists {

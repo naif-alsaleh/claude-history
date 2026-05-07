@@ -15,6 +15,11 @@ type rawConversation struct {
 	CreatedAt    time.Time    `json:"created_at"`
 	UpdatedAt    time.Time    `json:"updated_at"`
 	ChatMessages []rawMessage `json:"chat_messages"`
+	Settings     rawSettings  `json:"settings"`
+}
+
+type rawSettings struct {
+	EnabledWebSearch bool `json:"enabled_web_search"`
 }
 
 type rawMessage struct {
@@ -31,13 +36,16 @@ type rawContent struct {
 }
 
 var researchTools = map[string]bool{
-	"web_search":                   true,
-	"web_fetch":                    true,
-	"launch_extended_search_task":  true,
+	"web_search":                  true,
+	"web_fetch":                   true,
+	"launch_extended_search_task": true,
 }
 
-func isResearch(msgs []rawMessage) bool {
-	for _, m := range msgs {
+func isResearch(conv rawConversation) bool {
+	if conv.Settings.EnabledWebSearch {
+		return true
+	}
+	for _, m := range conv.ChatMessages {
 		for _, c := range m.Content {
 			if c.Type == "tool_use" && researchTools[c.Name] {
 				return true
@@ -83,7 +91,7 @@ func Import(ctx context.Context, store *Store, jsonPath string) (ImportStats, er
 			Summary:    raw.Summary,
 			CreatedAt:  raw.CreatedAt,
 			UpdatedAt:  raw.UpdatedAt,
-			IsResearch: isResearch(raw.ChatMessages),
+			IsResearch: isResearch(raw),
 		}
 		if err := store.InsertConversation(ctx, conv); err != nil {
 			return stats, fmt.Errorf("inserting conversation %s: %w", raw.UUID, err)
