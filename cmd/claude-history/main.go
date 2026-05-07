@@ -174,7 +174,7 @@ func searchCmd(dbPath *string) *cobra.Command {
 	cmd.Flags().IntVarP(&maxResults, "max", "n", 10, "maximum number of results")
 	cmd.Flags().BoolVarP(&researchOnly, "research", "r", false, "only search research conversations")
 	cmd.Flags().StringVarP(&sortOrder, "sort", "s", "date", "sort order: date, score, name")
-	cmd.Flags().StringVarP(&matchMode, "match", "m", "fuzzy", "match mode: fuzzy, substring")
+	cmd.Flags().StringVarP(&matchMode, "match", "m", "substring", "match mode: substring, fuzzy")
 	return cmd
 }
 

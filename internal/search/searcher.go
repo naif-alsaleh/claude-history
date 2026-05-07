@@ -36,11 +36,11 @@ func (o OrderMode) Next() OrderMode {
 type MatchMode int
 
 const (
-	MatchFuzzy MatchMode = iota
-	MatchSubstring
+	MatchSubstring MatchMode = iota
+	MatchFuzzy
 )
 
-var matchModes = []MatchMode{MatchFuzzy, MatchSubstring}
+var matchModes = []MatchMode{MatchSubstring, MatchFuzzy}
 
 func (m MatchMode) String() string {
 	switch m {
