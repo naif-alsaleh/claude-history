@@ -9,10 +9,14 @@ import (
 	"github.com/naif/claude-history/internal/data"
 )
 
+const fuzzyScoreThreshold = 0.3
+
 type FuzzySearcher struct {
 	store        *data.Store
 	convs        []data.ConversationWithMessages
 	researchOnly bool
+	orderMode    OrderMode
+	matchMode    MatchMode
 }
 
 func NewFuzzySearcher(store *data.Store) *FuzzySearcher {
@@ -30,6 +34,10 @@ func (f *FuzzySearcher) Index(ctx context.Context) error {
 
 func (f *FuzzySearcher) SetResearchOnly(v bool) { f.researchOnly = v }
 func (f *FuzzySearcher) ResearchOnly() bool      { return f.researchOnly }
+func (f *FuzzySearcher) SetOrderMode(m OrderMode) { f.orderMode = m }
+func (f *FuzzySearcher) OrderMode() OrderMode     { return f.orderMode }
+func (f *FuzzySearcher) SetMatchMode(m MatchMode)  { f.matchMode = m }
+func (f *FuzzySearcher) MatchMode() MatchMode      { return f.matchMode }
 
 func (f *FuzzySearcher) Search(_ context.Context, query string, maxResults int) ([]data.SearchResult, error) {
 	query = strings.ToLower(query)
@@ -46,28 +54,51 @@ func (f *FuzzySearcher) Search(_ context.Context, query string, maxResults int) 
 				Conversation: cw.Conversation,
 			})
 		}
-		sort.Slice(results, func(i, j int) bool {
-			return results[i].Conversation.UpdatedAt.After(results[j].Conversation.UpdatedAt)
-		})
 	} else {
+		minScore := 0.0
+		if f.matchMode == MatchFuzzy {
+			minScore = fuzzyScoreThreshold
+		}
 		for _, cw := range f.convs {
 			if f.researchOnly && !cw.Conversation.IsResearch {
 				continue
 			}
-			best := scoreBest(cw, tokens)
-			if best.Score > 0 {
+			best := scoreBest(cw, tokens, f.matchMode)
+			if best.Score > minScore {
 				results = append(results, best)
 			}
 		}
-		sort.Slice(results, func(i, j int) bool {
-			return results[i].Score > results[j].Score
-		})
 	}
+
+	f.sortResults(results, len(tokens) > 0)
 
 	if maxResults > 0 && len(results) > maxResults {
 		results = results[:maxResults]
 	}
 	return results, nil
+}
+
+func (f *FuzzySearcher) sortResults(results []data.SearchResult, hasQuery bool) {
+	switch f.orderMode {
+	case OrderScore:
+		if hasQuery {
+			sort.Slice(results, func(i, j int) bool {
+				return results[i].Score > results[j].Score
+			})
+		} else {
+			sort.Slice(results, func(i, j int) bool {
+				return results[i].Conversation.UpdatedAt.After(results[j].Conversation.UpdatedAt)
+			})
+		}
+	case OrderName:
+		sort.Slice(results, func(i, j int) bool {
+			return strings.ToLower(results[i].Conversation.Name) < strings.ToLower(results[j].Conversation.Name)
+		})
+	default: // OrderDate
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Conversation.UpdatedAt.After(results[j].Conversation.UpdatedAt)
+		})
+	}
 }
 
 type match struct {
@@ -76,11 +107,11 @@ type match struct {
 	source  string // "title", "summary", "message"
 }
 
-func scoreBest(cw data.ConversationWithMessages, tokens []string) data.SearchResult {
+func scoreBest(cw data.ConversationWithMessages, tokens []string, mode MatchMode) data.SearchResult {
 	var best match
 
 	titleLower := strings.ToLower(cw.Conversation.Name)
-	if s := scoreText(titleLower, tokens); s > 0 {
+	if s := scoreText(titleLower, tokens, mode); s > 0 {
 		m := match{score: s * 3.0, snippet: cw.Conversation.Name, source: "title"}
 		if m.score > best.score {
 			best = m
@@ -88,7 +119,7 @@ func scoreBest(cw data.ConversationWithMessages, tokens []string) data.SearchRes
 	}
 
 	summaryLower := strings.ToLower(cw.Conversation.Summary)
-	if s := scoreText(summaryLower, tokens); s > 0 {
+	if s := scoreText(summaryLower, tokens, mode); s > 0 {
 		m := match{score: s * 1.5, snippet: extractSnippet(cw.Conversation.Summary, tokens, 150), source: "summary"}
 		if m.score > best.score {
 			best = m
@@ -97,7 +128,7 @@ func scoreBest(cw data.ConversationWithMessages, tokens []string) data.SearchRes
 
 	for _, msg := range cw.Messages {
 		textLower := strings.ToLower(msg.Text)
-		if s := scoreText(textLower, tokens); s > 0 {
+		if s := scoreText(textLower, tokens, mode); s > 0 {
 			m := match{score: s, snippet: extractSnippet(msg.Text, tokens, 150), source: "message"}
 			if m.score > best.score {
 				best = m
@@ -152,7 +183,7 @@ func hasSubstringMatch(text string, tokens []string) bool {
 
 // scoreText returns a score for how well text matches the tokens.
 // Exact substring matches score much higher than fuzzy character-sequence matches.
-func scoreText(text string, tokens []string) float64 {
+func scoreText(text string, tokens []string, mode MatchMode) float64 {
 	if text == "" {
 		return 0
 	}
@@ -160,7 +191,7 @@ func scoreText(text string, tokens []string) float64 {
 	for _, tok := range tokens {
 		if strings.Contains(text, tok) {
 			total += 1.0
-		} else if fuzzyMatch(text, tok) {
+		} else if mode == MatchFuzzy && fuzzyMatch(text, tok) {
 			total += 0.2
 		}
 	}

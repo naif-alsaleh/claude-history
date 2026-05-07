@@ -153,7 +153,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.searcher.SetResearchOnly(ro)
 			m.searching = true
 			return m, m.doSearch(m.input.Value())
-			return m, nil
+		case "ctrl+s":
+			m.searcher.SetOrderMode(m.searcher.OrderMode().Next())
+			m.searching = true
+			return m, m.doSearch(m.input.Value())
+		case "ctrl+d":
+			m.searcher.SetMatchMode(m.searcher.MatchMode().Next())
+			m.searching = true
+			return m, m.doSearch(m.input.Value())
 		}
 
 	case tea.WindowSizeMsg:
@@ -212,7 +219,9 @@ func (m model) View() string {
 	if m.searcher.ResearchOnly() {
 		filter = "research only"
 	}
-	help := helpStyle.Render("↑/↓/ctrl+p/n navigate • enter open • ctrl+a filter [" + filter + "] • esc quit" + status)
+	order := m.searcher.OrderMode().String()
+	matchMode := m.searcher.MatchMode().String()
+	help := helpStyle.Render("↑/↓ nav • enter open • ctrl+a filter [" + filter + "] • ctrl+s sort [" + order + "] • ctrl+d match [" + matchMode + "] • esc quit" + status)
 
 	var body string
 	if len(m.results) == 0 && !m.searching {
