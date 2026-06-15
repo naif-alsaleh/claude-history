@@ -84,7 +84,19 @@ func (f *FuzzySearcher) Search(_ context.Context, query string, maxResults int) 
 
 func (f *FuzzySearcher) sortResults(results []data.SearchResult, hasQuery bool) {
 	switch f.orderMode {
-	case OrderScore:
+	case OrderRecent:
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Conversation.UpdatedAt.After(results[j].Conversation.UpdatedAt)
+		})
+	case OrderCreated:
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Conversation.CreatedAt.After(results[j].Conversation.CreatedAt)
+		})
+	case OrderName:
+		sort.Slice(results, func(i, j int) bool {
+			return strings.ToLower(results[i].Conversation.Name) < strings.ToLower(results[j].Conversation.Name)
+		})
+	default: // OrderScore — relevance when querying, most-recent otherwise
 		if hasQuery {
 			sort.Slice(results, func(i, j int) bool {
 				return results[i].Score > results[j].Score
@@ -94,14 +106,6 @@ func (f *FuzzySearcher) sortResults(results []data.SearchResult, hasQuery bool) 
 				return results[i].Conversation.UpdatedAt.After(results[j].Conversation.UpdatedAt)
 			})
 		}
-	case OrderName:
-		sort.Slice(results, func(i, j int) bool {
-			return strings.ToLower(results[i].Conversation.Name) < strings.ToLower(results[j].Conversation.Name)
-		})
-	default: // OrderDate
-		sort.Slice(results, func(i, j int) bool {
-			return results[i].Conversation.UpdatedAt.After(results[j].Conversation.UpdatedAt)
-		})
 	}
 }
 

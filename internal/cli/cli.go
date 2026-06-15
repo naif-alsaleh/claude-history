@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/naif/claude-history/internal/data"
 	"github.com/naif/claude-history/internal/search"
@@ -33,7 +32,7 @@ func printResult(idx int, r data.SearchResult) {
 	}
 
 	fmt.Printf("\n%d. %s%s\n", idx, r.Conversation.Name, research)
-	fmt.Printf("   %s\n", r.Conversation.CreatedAt.Format(time.DateOnly))
+	fmt.Printf("   %s\n", r.Conversation.DateLabel())
 	fmt.Printf("   https://claude.ai/chat/%s\n", r.Conversation.UUID)
 	if r.Snippet != "" {
 		lines := wrapText(r.Snippet, 80)

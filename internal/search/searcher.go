@@ -9,23 +9,26 @@ import (
 type OrderMode int
 
 const (
-	OrderDate OrderMode = iota
-	OrderScore
+	OrderScore OrderMode = iota
+	OrderRecent
+	OrderCreated
 	OrderName
 )
 
-var orderModes = []OrderMode{OrderDate, OrderScore, OrderName}
+var orderModes = []OrderMode{OrderScore, OrderRecent, OrderCreated, OrderName}
 
 func (o OrderMode) String() string {
 	switch o {
-	case OrderDate:
-		return "date"
 	case OrderScore:
 		return "score"
+	case OrderRecent:
+		return "recent"
+	case OrderCreated:
+		return "created"
 	case OrderName:
 		return "name"
 	default:
-		return "date"
+		return "score"
 	}
 }
 

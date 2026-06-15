@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -269,7 +268,7 @@ func (m model) renderEntry(idx int, r data.SearchResult, selected bool) string {
 	}
 	b.WriteString(indicator + title + "\n")
 
-	date := dateStyle.Render(r.Conversation.CreatedAt.Format(time.DateOnly))
+	date := dateStyle.Render(r.Conversation.DateLabel())
 	url := urlStyle.Render(fmt.Sprintf("https://claude.ai/chat/%s", r.Conversation.UUID))
 	b.WriteString("  " + date + "  " + url + "\n")
 

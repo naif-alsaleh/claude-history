@@ -150,8 +150,10 @@ func searchCmd(dbPath *string) *cobra.Command {
 			searcher := search.NewFuzzySearcher(store)
 			searcher.SetResearchOnly(researchOnly)
 			switch sortOrder {
-			case "date":
-				searcher.SetOrderMode(search.OrderDate)
+			case "recent", "updated", "date":
+				searcher.SetOrderMode(search.OrderRecent)
+			case "created":
+				searcher.SetOrderMode(search.OrderCreated)
 			case "name":
 				searcher.SetOrderMode(search.OrderName)
 			default:
@@ -175,7 +177,7 @@ func searchCmd(dbPath *string) *cobra.Command {
 
 	cmd.Flags().IntVarP(&maxResults, "max", "n", 10, "maximum number of results")
 	cmd.Flags().BoolVarP(&researchOnly, "research", "r", false, "only search research conversations")
-	cmd.Flags().StringVarP(&sortOrder, "sort", "s", "score", "sort order: score, date, name")
+	cmd.Flags().StringVarP(&sortOrder, "sort", "s", "score", "sort order: score, recent, created, name")
 	cmd.Flags().StringVarP(&matchMode, "match", "m", "substring", "match mode: substring, fuzzy")
 	return cmd
 }
