@@ -150,10 +150,12 @@ func searchCmd(dbPath *string) *cobra.Command {
 			searcher := search.NewFuzzySearcher(store)
 			searcher.SetResearchOnly(researchOnly)
 			switch sortOrder {
-			case "score":
-				searcher.SetOrderMode(search.OrderScore)
+			case "date":
+				searcher.SetOrderMode(search.OrderDate)
 			case "name":
 				searcher.SetOrderMode(search.OrderName)
+			default:
+				searcher.SetOrderMode(search.OrderScore)
 			}
 			switch matchMode {
 			case "substring":
@@ -173,7 +175,7 @@ func searchCmd(dbPath *string) *cobra.Command {
 
 	cmd.Flags().IntVarP(&maxResults, "max", "n", 10, "maximum number of results")
 	cmd.Flags().BoolVarP(&researchOnly, "research", "r", false, "only search research conversations")
-	cmd.Flags().StringVarP(&sortOrder, "sort", "s", "date", "sort order: date, score, name")
+	cmd.Flags().StringVarP(&sortOrder, "sort", "s", "score", "sort order: score, date, name")
 	cmd.Flags().StringVarP(&matchMode, "match", "m", "substring", "match mode: substring, fuzzy")
 	return cmd
 }
@@ -191,6 +193,7 @@ func tuiCmd(dbPath *string) *cobra.Command {
 
 			ctx := context.Background()
 			searcher := search.NewFuzzySearcher(store)
+			searcher.SetOrderMode(search.OrderScore)
 			if err := searcher.Index(ctx); err != nil {
 				return err
 			}
